@@ -1,0 +1,3 @@
+[submodule "external/rapidhash"]
+	path = external/rapidhash
+	url = https://github.com/Nicoshev/rapidhash.git

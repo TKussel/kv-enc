@@ -2,18 +2,18 @@ CC = gcc
 CSTD = gnu17
 # CFLAGS = -Wall -Wextra -pedantic -std=$(CSTD) -O2 -I /opt/homebrew/include/
 CFLAGS = -Wall -Wextra -pedantic -std=$(CSTD) -O0 -ggdb -I /opt/homebrew/include/
-LDFLAGS = -lsodium -L /opt/homebrew/lib/
+LDFLAGS = -lcrypto -ldl -L /opt/homebrew/lib/
 
-SRC = main.c \
-      kvnummer.c \
+SRC = seeded_rsa_pubenc_oaep_2.c \
+			kvnummer.c \
       util.c
 
-HDR = kvnummer.h \
+HDR =  kvnummer.h \
 			util.h
 
 OBJ = $(SRC:.c=.o)
 
-TARGET = kv_encrypt
+TARGET = seeded_enc
 
 .PHONY: all clean
 

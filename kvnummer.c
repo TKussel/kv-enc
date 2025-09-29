@@ -47,6 +47,42 @@ char *serialize_kvnummer(const Kvnummer *kvnummer) {
   return result;
 }
 
+Kvnummer *deserialize_kvnummer(const char *kv_string) {
+  size_t len = strlen(kv_string);
+  Kvnummer *result = malloc(sizeof(Kvnummer));
+  switch (len) {
+  case 10: {
+    result->type = kv10;
+    strncpy(result->unchangable, kv_string, 9);
+    strncpy(&result->unchangable_ecc, &kv_string[9], 1);
+    break;
+  };
+  case 20: {
+    result->type = kv20;
+    strncpy(result->unchangable, kv_string, 9);
+    strncpy(&result->unchangable_ecc, &kv_string[9], 1);
+    strncpy(result->institution, &kv_string[10], 9);
+    strncpy(&result->complete_ecc, &kv_string[19], 1);
+    break;
+  };
+  case 30: {
+    result->type = kv30;
+    strncpy(result->unchangable, kv_string, 9);
+    strncpy(&result->unchangable_ecc, &kv_string[9], 1);
+    strncpy(result->institution, &kv_string[10], 9);
+    strncpy(result->main_insured, &kv_string[19], 9);
+    strncpy(&result->main_insured_ecc, &kv_string[28], 1);
+    strncpy(&result->complete_ecc, &kv_string[29], 1);
+    break;
+  };
+  default: {
+    printf("Unknown KV-Nummer length: %zu\n", len);
+    return NULL;
+  }
+  }
+  return result;
+}
+
 Kvnummer synthetic_kvnummer30(void) {
   Kvnummer result = {
       .unchangable = {'T', '1', '2', '3', '4', '5', '6', '7', '8'},

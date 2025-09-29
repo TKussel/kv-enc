@@ -1,7 +1,6 @@
 #ifndef kvnummer_H
 #define kvnummer_H
 
-#include <sodium.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -19,6 +18,7 @@ typedef struct {
 
 bool validate_kvnummer(const Kvnummer *kvnummer);
 char *serialize_kvnummer(const Kvnummer *kvnummer);
+Kvnummer *deserialize_kvnummer(const char *kv_string);
 
 Kvnummer synthetic_kvnummer10(void);
 Kvnummer synthetic_kvnummer20(void);

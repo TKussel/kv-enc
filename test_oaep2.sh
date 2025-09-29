@@ -5,12 +5,20 @@ openssl pkey -in priv.pem -pubout -out pub.pem
 # 2) Build
 make
 
-./kv-encrypt pub.pem
-./kv-encrypt pub.pem
+echo "The two outputs should be the same:"
+./kv-encrypt pub.pem tests/test_kvs.txt
+cat tests/test_kvs.txt.out
+./kv-encrypt pub.pem tests/test_kvs.txt
+cat tests/test_kvs.txt.out
 # 3) Determinism: same key/label → same ciphertext
-./kv-encrypt --label "ctx-v1" pub.pem
-./kv-encrypt --label "ctx-v1" pub.pem
+echo "The two outputs should be the same but different from the first two:"
+./kv-encrypt --label "ctx-v1" pub.pem tests/test_kvs.txt
+cat tests/test_kvs.txt.out
+./kv-encrypt --label "ctx-v1" pub.pem tests/test_kvs.txt
+cat tests/test_kvs.txt.out
 
 # 4) Change label → different ciphertext
-./kv-encrypt --label "ctx-v2" pub.pem
+echo "The last output should be different:"
+./kv-encrypt --label "ctx-v2" pub.pem tests/test_kvs.txt
+cat tests/test_kvs.txt.out
 

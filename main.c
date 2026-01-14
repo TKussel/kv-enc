@@ -372,6 +372,7 @@ static int oaep_encode_deterministic(EVP_RAND_CTX *rctx, unsigned char *em,
   // PS already zeroed
   DB[hLen + psLen] = 0x01;
   memcpy(DB + hLen + psLen + 1, msg, mlen);
+  free(msg);
 
   // 3) seed = random hLen bytes (here: deterministic from rctx)
   unsigned char *seed = OPENSSL_malloc(hLen);
@@ -644,19 +645,19 @@ int main(int argc, char **argv) {
   // Create an isolated libctx and load providers (default/base + our built-in)
   OSSL_LIB_CTX *libctx = OSSL_LIB_CTX_new();
   if (!libctx) {
-    fprintf(stderr, "libctx new failed\n");
+    perror("libctx new failed: ");
     return 1;
   }
 
   if (!OSSL_PROVIDER_add_builtin(libctx, "seedprov", seeded_provider_init)) {
-    fprintf(stderr, "add_builtin failed\n");
+    perror("add_builtin failed: ");
     return 1;
   }
   OSSL_PROVIDER *prov_def = OSSL_PROVIDER_load(libctx, "default");
   OSSL_PROVIDER *prov_base = OSSL_PROVIDER_load(libctx, "base");
   OSSL_PROVIDER *prov_seed = OSSL_PROVIDER_load(libctx, "seedprov");
   if (!prov_def || !prov_base || !prov_seed) {
-    fprintf(stderr, "provider load failed\n");
+    perror("provider load failed: ");
     return 1;
   }
   //
@@ -671,7 +672,7 @@ int main(int argc, char **argv) {
   // Fetch deterministic RAND
   EVP_RAND *r = EVP_RAND_fetch(libctx, "seededprng", NULL);
   if (!r) {
-    fprintf(stderr, "EVP_RAND_fetch seededprng failed\n");
+    perror("EVP_RAND_fetch seededprng failed: ");
     return 1;
   }
   char *output_name = malloc(strlen(args.in_path) + 5);
@@ -691,6 +692,12 @@ int main(int argc, char **argv) {
   char **input_lines = read_trim_input(args.in_path, &line_count);
   if (input_lines) {
     FILE *output_file = fopen(output_name, "w"); // Create/clear file
+    free(output_name);
+
+    if(output_file == NULL) {
+        perror("Failed opening output file: ");
+        return 1;
+    }
     size_t lines_processed = 0;
     size_t lines_skipped = 0;
     for (size_t i = 0; i < line_count; i++) {
@@ -718,16 +725,16 @@ int main(int argc, char **argv) {
       unsigned char *seed = NULL;
       size_t seedlen = 0;
       if (!hex2bin(seed_hex, &seed, &seedlen)) {
-        fprintf(stderr, "Bad hex seed\n");
-        fclose(output_file);
+        perror("Bad hex seed: ");
+        fclose_safe(&output_file);
         return 1;
       }
       OSSL_PARAM inst_params[] = {
           OSSL_PARAM_octet_string(SEEDED_PARAM_SEED, seed, seedlen),
           OSSL_PARAM_END};
       if (!EVP_RAND_instantiate(rctx, 256, 0, NULL, 0, inst_params)) {
-        fprintf(stderr, "RAND instantiate failed\n");
-        fclose(output_file);
+        perror("RAND instantiate failed: ");
+        fclose_safe(&output_file);
         return 1;
       }
       OPENSSL_clear_free(seed, seedlen);
@@ -754,39 +761,40 @@ int main(int argc, char **argv) {
 
       unsigned char *EM = OPENSSL_malloc(k);
       if (!EM) {
-        fprintf(stderr, "alloc EM failed\n");
-        fclose(output_file);
+        perror("alloc EM failed: ");
+        fclose_safe(&output_file);
         return 1;
       }
       if (!oaep_encode_deterministic(rctx, EM, k, msg, mlen, label, label_len,
                                      md, mgf1md)) {
-        fprintf(stderr, "OAEP encode failed\n");
-        fclose(output_file);
+        perror("OAEP encode failed: ");
+        fclose_safe(&output_file);
         return 1;
       }
 
       // Raw RSA public encrypt (NO padding at RSA layer)
       EVP_PKEY_CTX *ectx = EVP_PKEY_CTX_new_from_pkey(libctx, pub, NULL);
       if (!ectx) {
-        fprintf(stderr, "encrypt ctx failed\n");
-        fclose(output_file);
+        perror("encrypt ctx failed: ");
+        fclose_safe(&output_file);
         return 1;
       }
       if (EVP_PKEY_encrypt_init(ectx) <= 0) {
-        fprintf(stderr, "encrypt init failed\n");
-        fclose(output_file);
+        perror("encrypt init failed: ");
+        fclose_safe(&output_file);
         return 1;
       }
       if (EVP_PKEY_CTX_set_rsa_padding(ectx, RSA_NO_PADDING) <= 0) {
-        fprintf(stderr, "set no padding failed\n");
-        fclose(output_file);
+        perror("set no padding failed: ");
+        fclose_safe(&output_file);
         return 1;
       }
-      unsigned char *C = OPENSSL_malloc(k);
+      char *C = OPENSSL_malloc(k+1);
+      C[k] = '\0';
       size_t Clen = k;
       if (!C || EVP_PKEY_encrypt(ectx, C, &Clen, EM, k) <= 0 || Clen != k) {
-        fprintf(stderr, "raw RSA encrypt failed\n");
-        fclose(output_file);
+        perror("raw RSA encrypt failed: ");
+        fclose_safe(&output_file);
         return 1;
       }
       EVP_PKEY_CTX_free(ectx);
@@ -798,7 +806,7 @@ int main(int argc, char **argv) {
       printf("\n");
 #endif
 
-      const char *fingerprint = sha256_base64(C);
+      char *fingerprint = sha256_base64(C);
 #ifdef DEBUG
       printf("KV-Nummer-Fingerprint: %s\n", fingerprint);
 #endif
@@ -813,13 +821,13 @@ int main(int argc, char **argv) {
       EVP_RAND_uninstantiate(rctx);
       EVP_RAND_CTX_free(rctx);
       free(current_number);
-      fclose(output_file);
     }
-    free_input(input_lines, line_count);
+    fclose_safe(&output_file);
+    free_array(input_lines, line_count);
     printf("Finished encrypting %zu lines, %zu lines skipped.\n",
            lines_processed, lines_skipped);
   } else {
-    fprintf(stderr, "Unreadable or empty input file\n");
+    perror("Unreadable or empty input file: ");
   }
   if (args.label_alloc && args.label)
     OPENSSL_free((void *)args.label);

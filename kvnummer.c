@@ -8,15 +8,15 @@ char *serialize_kvnummer(const Kvnummer *kvnummer) {
   char *result;
   switch (kvnummer->type) {
   case kv10: {
-    result = (unsigned char *)malloc(20);
+    result = (unsigned char *)malloc(21);
     break;
   }
   case kv20: {
-    result = (unsigned char *)malloc(40);
+    result = (unsigned char *)malloc(41);
     break;
   }
   case kv30: {
-    result = (unsigned char *)malloc(60);
+    result = (unsigned char *)malloc(61);
     break;
   }
   }
@@ -77,6 +77,7 @@ Kvnummer *deserialize_kvnummer(const char *kv_string) {
   };
   default: {
     printf("Unknown KV-Nummer length: %zu\n", len);
+    free(result);
     return NULL;
   }
   }

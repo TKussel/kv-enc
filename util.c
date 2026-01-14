@@ -3,6 +3,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+//
+// Free the allocated input lines array
+void free_array(char **lines, size_t count) {
+  for (size_t i = 0; i < count; i++) {
+    free(lines[i]);
+  }
+  free(lines);
+}
+
+// Safely close file pointer (even if already closed or fopen failed)
+void fclose_safe(FILE **fp) {
+  if (fp && *fp) {
+    fclose(*fp);
+    *fp = NULL;
+  }
+}
 
 int hex2bin(const char *hex, unsigned char **out, size_t *outlen) {
   size_t len = strlen(hex);
@@ -33,7 +49,7 @@ int save_to_file(const char *filename, const unsigned char *data,
     return -1;
   }
   fwrite(data, sizeof(data[0]), length, f);
-  fclose(f);
+  fclose_safe(&f);
   return 0;
 }
 
@@ -69,7 +85,7 @@ char **read_trim_input(const char *filename, size_t *line_count) {
   char **lines = malloc(capacity * sizeof(char *));
   if (!lines) {
     perror("Memory allocation failed");
-    fclose(fp);
+    fclose_safe(&fp);
     return NULL;
   }
 
@@ -101,16 +117,8 @@ char **read_trim_input(const char *filename, size_t *line_count) {
     lines[count++] = line_copy;
   }
 
-  fclose(fp);
+  fclose_safe(&fp);
 
   *line_count = count;
   return lines;
-}
-
-// Free the allocated input lines array
-void free_input(char **lines, size_t count) {
-  for (size_t i = 0; i < count; i++) {
-    free(lines[i]);
-  }
-  free(lines);
 }

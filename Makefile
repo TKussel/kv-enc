@@ -1,8 +1,9 @@
 CC = gcc
 CSTD = gnu17
-# CFLAGS = -Wall -Wextra -pedantic -std=$(CSTD) -O2 -I /opt/homebrew/include/
-CFLAGS = -Wall -Wextra -pedantic -std=$(CSTD) -O0 -ggdb -I /opt/homebrew/include/
-LDFLAGS = -lcrypto -ldl -L /opt/homebrew/lib/
+CFLAGS = -fsanitize=address,undefined
+CFLAGS += -Wall -Wextra -pedantic -std=$(CSTD) -O0 -ggdb -I /opt/homebrew/include/ -Ddebug
+LDFLAGS = -fsanitize=address,undefined
+LDFLAGS += -lcrypto -ldl -L /opt/homebrew/lib/
 
 SRC = main.c \
 			kvnummer.c \

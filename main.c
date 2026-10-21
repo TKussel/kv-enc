@@ -470,6 +470,8 @@ typedef struct {
   const unsigned char *label;
   size_t label_len;
   int label_alloc; // 1 if we malloc'd it and must free later
+  // Hex label is not null terminated, so display label required
+  const char *label_display;
   const char *message;
   const char *pub_path;
   const char *in_path;
@@ -485,21 +487,30 @@ static int parse_args(int argc, char **argv, cli_args *out) {
       if (i + 1 >= argc)
         return 0;
       const char *s = argv[++i];
+      i++;
+      // --label-hex takes precedence regardless of argument order
+      if (out->label_alloc)
+        continue;
       out->label = (const unsigned char *)s;
       out->label_len = strlen(s);
-      out->label_alloc = 0;
-      i++;
+      out->label_display = s;
       continue;
     } else if (strcmp(argv[i], "--label-hex") == 0) {
       if (i + 1 >= argc)
         return 0;
       unsigned char *buf = NULL;
       size_t blen = 0;
-      if (!hex2bin(argv[i + 1], &buf, &blen))
+      if (!hex2bin(argv[i + 1], &buf, &blen)) {
+        fprintf(stderr, "Invalid hex label: %s\n", argv[i + 1]);
         return 0;
+      }
+      // Free a previous --label-hex buffer if the flag is given twice
+      if (out->label_alloc)
+        free((void *)out->label);
       out->label = buf;
       out->label_len = blen;
       out->label_alloc = 1;
+      out->label_display = argv[i + 1];
       i += 2;
       continue;
     } else if (strcmp(argv[i], "--help") == 0) {
@@ -576,12 +587,16 @@ char *pubkey_sha256_hex(const EVP_PKEY *pkey) {
 }
 
 /**
- *  Hash a string with SHA-256 and return a Base64-encoded string.
+ *  Hash a binary buffer of input_len bytes with SHA-256 and return a
+ *  Base64-encoded string.
+ *
+ *  The input is treated as raw bytes; it may contain 0x00 bytes (RSA
+ *  ciphertext usually does), so the length must be passed explicitly.
  *
  * Caller must OPENSSL_free() the returned string.
  * Returns NULL on error.
  */
-char *sha256_base64(const char *input) {
+char *sha256_base64(const unsigned char *input, size_t input_len) {
   if (!input)
     return NULL;
 
@@ -593,7 +608,7 @@ char *sha256_base64(const char *input) {
   unsigned int dlen = 0;
 
   int ok = EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) == 1 &&
-           EVP_DigestUpdate(ctx, input, strlen(input)) == 1 &&
+           EVP_DigestUpdate(ctx, input, input_len) == 1 &&
            EVP_DigestFinal_ex(ctx, digest, &dlen) == 1;
 
   EVP_MD_CTX_free(ctx);
@@ -678,13 +693,17 @@ int main(int argc, char **argv) {
   char *output_name = malloc(strlen(args.in_path) + 5);
   sprintf(output_name, "%s.out", args.in_path);
 
+  const char *label_prefix = args.label_alloc ? "hex:" : "";
+  const char *label_text = args.label_display ? args.label_display : "(empty)";
 #ifdef DEBUG
-  printf("Debug Info CLI Arguments:\nLabel: %s\nLabelAlloc: %u\nPubkey: "
+  printf("Debug Info CLI Arguments:\nLabel: %s%s\nLabelAlloc: %d\nPubkey: "
          "%s\nInput File: %s\nSeed: %s\n\n",
-         args.label, args.label_alloc, args.pub_path, args.in_path, seed_hex);
+         label_prefix, label_text, args.label_alloc, args.pub_path,
+         args.in_path, seed_hex);
 #else
-  printf("Encrypting File %s with\nKey %s and\nLabel %s to\nOutput File %s\n\n",
-         args.in_path, args.pub_path, args.label, output_name);
+  printf(
+      "Encrypting File %s with\nKey %s and\nLabel %s%s to\nOutput File %s\n\n",
+      args.in_path, args.pub_path, label_prefix, label_text, output_name);
 #endif
 
   // Read input file
@@ -694,9 +713,9 @@ int main(int argc, char **argv) {
     FILE *output_file = fopen(output_name, "w"); // Create/clear file
     free(output_name);
 
-    if(output_file == NULL) {
-        perror("Failed opening output file: ");
-        return 1;
+    if (output_file == NULL) {
+      perror("Failed opening output file: ");
+      return 1;
     }
     size_t lines_processed = 0;
     size_t lines_skipped = 0;
@@ -789,8 +808,8 @@ int main(int argc, char **argv) {
         fclose_safe(&output_file);
         return 1;
       }
-      char *C = OPENSSL_malloc(k+1);
-      C[k] = '\0';
+      // Raw binary ciphertext of exactly k bytes (may contain 0x00 bytes)
+      unsigned char *C = OPENSSL_malloc(k);
       size_t Clen = k;
       if (!C || EVP_PKEY_encrypt(ectx, C, &Clen, EM, k) <= 0 || Clen != k) {
         perror("raw RSA encrypt failed: ");
@@ -806,7 +825,13 @@ int main(int argc, char **argv) {
       printf("\n");
 #endif
 
-      char *fingerprint = sha256_base64(C);
+      // Hash the full ciphertext even if 0x00 bytes are present
+      char *fingerprint = sha256_base64(C, Clen);
+      if (!fingerprint) {
+        fprintf(stderr, "Fingerprint computation failed\n");
+        fclose_safe(&output_file);
+        return 1;
+      }
 #ifdef DEBUG
       printf("KV-Nummer-Fingerprint: %s\n", fingerprint);
 #endif
@@ -830,7 +855,7 @@ int main(int argc, char **argv) {
     perror("Unreadable or empty input file: ");
   }
   if (args.label_alloc && args.label)
-    OPENSSL_free((void *)args.label);
+    free((void *)args.label); // allocated with malloc() in hex2bin()
   EVP_RAND_free(r);
   EVP_PKEY_free(pub);
   OPENSSL_free((void *)seed_hex);
